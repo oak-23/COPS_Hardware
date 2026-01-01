@@ -9,8 +9,6 @@ const char* password = "YOUR_PASSWORD"; // change this
 // modify server name
 const char* serverUrl = "http://cops/endpoint"; // Replace with your server details
 
-WiFiClient client;
-
 void setup() {
   pinMode(2, INPUT);   // Connect HX710 OUT to Arduino pin 2
   pinMode(3, OUTPUT);  // Connect HX710 SCK to Arduino pin 3
