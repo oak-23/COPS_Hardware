@@ -1,14 +1,3 @@
-#include <WiFiS3.h>
-
-char ssid[] = "Airtel_suma_8138";
-char pass[] = "air24004";
-int status = WL_IDLE_STATUS;
-
-const char* server = "cops.snehashish.tech";
-int port = 8080;
-const char* path = "/sensor/quantity";
-
-WiFiClient client;
 
 
 void setup() {
@@ -21,17 +10,6 @@ void setup() {
   delay(1000); // give Serial time to come up
   Serial.println("Booting...");
 
-  // Connect to WiFi
-  while (status != WL_CONNECTED) {
-    Serial.print("Connecting to ");
-    Serial.println(ssid);
-    status = WiFi.begin(ssid, pass);
-    delay(1000);
-  }
-
-  Serial.println("Connected to WiFi");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
 }
 
 void loop() {
@@ -39,8 +17,6 @@ void loop() {
 
   Serial.print("Pressure: ");
   Serial.println(pressureResult, 6);
-
-  sendPressure(pressureResult);
 
   delay(5000);  // send every 5 seconds
 }
