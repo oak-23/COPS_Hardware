@@ -1,112 +1,114 @@
-#include "HX710AB.h"
-#include <WiFiNINA.h>
-#include <HTTPClient.h>
-#include <ArduinoJson.h>
+#include <WiFiS3.h>
 
-//  adjust pins to your setup
-uint8_t DOUT = 2; // sensor data pin
-uint8_t SCLK = 3; // sensor clock pin
-
-HX710B barometer(DOUT, SCLK); // create a barometer class
-
-// wifi connection
-char ssid[] = "test"; // wifi name
-char pass[] = ""; // wifi password
-
+char ssid[] = "Airtel_suma_8138";
+char pass[] = "air24004";
 int status = WL_IDLE_STATUS;
 
-// modify server name
-char server[] = "www.cops.com";
+const char* server = "cops.snehashish.tech";
+int port = 8080;
+const char* path = "/sensor/quantity";
 
 WiFiClient client;
 
+
 void setup() {
   // put your setup code here, to run once:
+  pinMode(2, INPUT);   // Connect HX710 OUT to Arduino pin 2
+  pinMode(3, OUTPUT);  // Connect HX710 SCK to Arduino pin 3
+
   Serial.begin(9600);
+  // IMPORTANT: remove while (!Serial) on non‑native USB boards
+  delay(1000); // give Serial time to come up
+  Serial.println("Booting...");
 
-  // Initialise barometer
-  barometer.begin();
-
-
+  // Connect to WiFi
   while (status != WL_CONNECTED) {
-    Serial.print("Attempting to connect to Network named: ");
+    Serial.print("Connecting to ");
     Serial.println(ssid);
-
-    // Initialise WiFi
     status = WiFi.begin(ssid, pass);
-    delay(10000);
+    delay(1000);
   }
 
-  Serial.print("SSID: ");
-  Serial.println(WiFi.SSID());
-  // create ipaddress objects
-  IPAddress ip = WiFi.localIP();
-  IPAddress gateway = WiFi.gatewayIP();
-  Serial.print("IP Address: ");
-  Serial.println(ip);
-
-
-  // Can't calibrate like this because ours is hx710B 
-
-  // barometer.set_scale(2280.f);
-  // barometer.tare();
+  Serial.println("Connected to WiFi");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
+  float pressureResult = readPressure();
 
-  // for pressure sensor
-  if (barometer.is_ready()) {
-    // Get pressure in some units
-    float pressure_measured = barometer.read(false);
+  Serial.print("Pressure: ");
+  Serial.println(pressureResult, 6);
 
+  sendPressure(pressureResult);
 
-    // Testing statements (debugging)
-    Serial.print("Pressure: ");
-    Serial.println(pressure_measured, 2); // Print with 2 decimal places
+  delay(5000);  // send every 5 seconds
+}
 
-    // Calculate Percentage
-    float initial_pressure = 100; // change this 
-    float water_exerted_pressure = 200; // change this 
-    float total_pressure = water_exerted_pressure - initial_pressure; // calculate total volume in terms of pressure
-    float percentage_left = 100 - (((total_pressure - pressure_measured) / total_pressure) * 100); 
+float readPressure() {
+  char formattedValue[8];
+  // wait for the current reading to finish
+  while (digitalRead(2)) {}
 
-  } else {
-    Serial.println("Pressure sensor not found.");
-  }
-
-  // for sending to server
-
-  // data to send to server
-  postData = postVariable + percentage_left;
-
-  if (status == WL_CONNECTED) {
-    // declare http object
-    HTTPClinet http;
-    http.begin(server); // Specify your server address and endpoint
-    http.addHeader("Content-Type", "application/json"); // Important header
-
-    // Initialise Json file
-    DynamicJsonDocument doc(1024);
-    doc["pressure"] = pressure;
-    doc["percentage_left"] = percentage_left;
-    String httpRequestData;
-    serializeJsonPretty(doc, httpRequestData);
-  }
-    // Send post request
-    int httpResponseCode = http.POST(httpRequestData);
-
-    // Testing statements (debugging)
-    if (httpResponseCode > 0) {
-      Serial.printf("Posted Json:c", httpResponseCode);
-      String response = http.getString();
-      Serial.println(response);
-    } else {
-      Serial.printf("Error: ", http.errorToString(httpResponseCode).c_str());
+  // read 24 bits
+  long result = 0;
+  for (int i = 0; i < 24; i++) {
+    digitalWrite(3, HIGH);
+    digitalWrite(3, LOW);
+    result = result << 1;
+    if (digitalRead(2)) {
+      result++;
     }
-
-    http.end();
   }
 
-  delay(5000); // Post every 5 seconds
+  // get the 2's complement
+  result = result ^ 0x800000;
+
+  // pulse the clock line 3 times to start the next pressure reading
+  for (char i = 0; i < 3; i++) {
+    digitalWrite(3, HIGH);
+    digitalWrite(3, LOW);
+  }
+  
+  float pressure = (result /100000000.0)/14.504 ;
+  
+  float initial_pressure = 100; // change this 
+  float water_exerted_pressure = 200; // change this 
+  float total_pressure = water_exerted_pressure - initial_pressure; // calculate total volume in terms of pressure
+  float percentage_left = 100 - (((total_pressure - (pressure - initial_pressure)) / total_pressure) * 100); 
+
+  return pressure; // Return the result
+}
+
+void sendPressure(float pressure) {
+  if (!client.connect(server, port)) {
+    Serial.println("Connection failed");
+    return;
+  }
+
+  // Build JSON body
+  String jsonBody = "{ \"pressure\": " + String(pressure, 6) + " }";
+
+  // HTTP POST request
+  client.print(String("POST ") + path + " HTTP/1.1\r\n");
+  client.print(String("Host: ") + server + "\r\n");
+  client.println("Content-Type: application/json");
+  client.print("Content-Length: ");
+  client.println(jsonBody.length());
+  client.println("Connection: close");
+  client.println();
+  client.println(jsonBody);
+
+  Serial.println("Sent:");
+  Serial.println(jsonBody);
+
+  // Read response (optional but recommended)
+  while (client.connected()) {
+    if (client.available()) {
+      String line = client.readStringUntil('\n');
+      Serial.println(line);
+    }
+  }
+
+  client.stop();
 }
